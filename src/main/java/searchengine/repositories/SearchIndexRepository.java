@@ -10,4 +10,5 @@ import java.util.List;
 public interface SearchIndexRepository extends JpaRepository<SearchIndex, Integer> {
 
     List<SearchIndex> findByPageId(int id);
+    List<SearchIndex> findByLemmaId(Integer integer);
 }

@@ -41,7 +41,7 @@ public class LemmaService {
         lemmaRepository.delete(lemma);
     }
 
-    public long countLemmas() {
-        return lemmaRepository.count();
+    public int countBySiteId(int siteId) {
+        return lemmaRepository.countBySiteId(siteId);
     }
 }

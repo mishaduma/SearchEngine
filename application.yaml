@@ -17,7 +17,11 @@ indexing-settings:
   sites:
     - url: https://www.playback.ru/
       name: PlayBack.Ru
-    - url: http://radiomv.ru/
+    - url: http://www.radiomv.ru/
       name: radiomv.ru
     - url: https://www.lutherancathedral.ru/
       name: lutherancathedral.ru
+    - url: https://www.dombulgakova.ru/
+      name: dombulgakova.ru
+    - url: https://www.svetlovka.ru/
+      name: svetlovka.ru

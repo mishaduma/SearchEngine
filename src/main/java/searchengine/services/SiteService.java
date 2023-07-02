@@ -24,6 +24,10 @@ public class SiteService {
         return siteRepository.findByUrl(url);
     }
 
+    public Site getById(int id) {
+        return siteRepository.findById(id);
+    }
+
     public boolean contains(String url) {
         return siteRepository.countByUrl(url) > 0;
     }
@@ -32,7 +36,7 @@ public class SiteService {
         return siteRepository.findAll();
     }
 
-    public long countSites() {
-        return siteRepository.count();
+    public int countSites() {
+        return (int) siteRepository.count();
     }
 }

@@ -7,6 +7,7 @@ import searchengine.repositories.PageRepository;
 
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -22,6 +23,10 @@ public class PageService {
         return pageRepository.findAll();
     }
 
+    public Page getById(int id) {
+        Optional<Page> optionalPage = pageRepository.findById(id);
+        return optionalPage.orElse(null);
+    }
     public Page getByUrl(String url) {
         return pageRepository.findByPath(url).orElse(null);
     }
@@ -34,7 +39,7 @@ public class PageService {
         return pageRepository.countByPath(url) > 0;
     }
 
-    public long countPages() {
-        return pageRepository.count();
+    public int countBySiteId(int siteId){
+        return pageRepository.countBySiteId(siteId);
     }
 }

@@ -22,7 +22,7 @@ public class SearchIndexService {
         return searchIndexRepository.findByPageId(id);
     }
 
-    public long countSearchIndex() {
-        return searchIndexRepository.count();
+    public List<SearchIndex> getByLemmaId(int id) {
+        return searchIndexRepository.findByLemmaId(id);
     }
 }
