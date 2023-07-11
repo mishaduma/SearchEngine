@@ -1,6 +1,8 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import searchengine.dto.indexing.LemmasCounter;
 import searchengine.dto.search.SearchData;
@@ -22,10 +24,12 @@ public class SearchServiceImpl implements SearchService {
     private final LemmaService lemmaService;
     private final SearchIndexService searchIndexService;
     private final SiteService siteService;
+    private final Logger logger = LoggerFactory.getLogger(SearchServiceImpl.class.getName());
 
     @Override
     public SearchResponse search(String query, String site, int offset, int limit) throws IOException {
 
+        logger.info("Поиск запущен...");
         Map<String, Integer> lemmasFromQuery = new LemmasCounter().getLemmas(query);
         List<Lemma> lemmasFromDB = new ArrayList<>();
         List<Lemma> sortedLemmas = new ArrayList<>();
@@ -71,6 +75,7 @@ public class SearchServiceImpl implements SearchService {
         if (pages.size() == 0) {
             searchResponse.setCount(0);
             searchResponse.setData(null);
+            logger.info("Поиск завершён!");
             return searchResponse;
         }
 
@@ -88,6 +93,7 @@ public class SearchServiceImpl implements SearchService {
         searchResponse.setCount(Math.min(pages.size(), limit));
         searchResponse.setData(getSearchDataList(pages, searchIndices, query).stream()
                 .limit(limit).collect(Collectors.toList()));
+        logger.info("Поиск завершён!");
         return searchResponse;
     }
 

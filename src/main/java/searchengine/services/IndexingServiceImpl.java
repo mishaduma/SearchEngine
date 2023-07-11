@@ -1,6 +1,8 @@
 package searchengine.services;
 
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import searchengine.config.ConfigSite;
 import searchengine.config.SitesList;
@@ -31,10 +33,12 @@ public class IndexingServiceImpl implements IndexingService {
     private final SitesList sitesList;
     private static final List<RankedLemma> rankedLemmas = new ArrayList<>();
     private ForkJoinPool forkJoinPool;
+    private final Logger logger = LoggerFactory.getLogger(IndexingServiceImpl.class.getName());
 
     @Override
     public IndexingResponse startIndexing() {
 
+        logger.info("Индексация запущена...");
         IndexingResponse response = new IndexingResponse();
 
         for (ConfigSite s : sitesList.getSites()) {
@@ -49,6 +53,7 @@ public class IndexingServiceImpl implements IndexingService {
             site.setStatus(INDEXING);
             site.setLastError(null);
             siteService.save(site);
+            logger.info(site.getName() + " добавлен в БД");
         }
 
         //uploading pages
@@ -77,6 +82,7 @@ public class IndexingServiceImpl implements IndexingService {
             for (Site site : sites) {
                 createLemmas(site, lemmas);
             }
+            logger.info("Добавление лемм в БД...");
             lemmaService.uploadLemmas(lemmas);
 
             List<SearchIndex> searchIndices = new ArrayList<>();
@@ -96,13 +102,13 @@ public class IndexingServiceImpl implements IndexingService {
                 searchIndex.setRank(rankedLemma.getRank());
                 searchIndices.add(searchIndex);
             }
-
+            logger.info("Добавление SearchIndices в БД...");
             searchIndexService.uploadSearchIndex(searchIndices);
             rankedLemmas.clear();
 
             return null;
         });
-
+        logger.info("Индексация завершена!");
         response.setResult(true);
         return response;
     }
@@ -110,11 +116,13 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public IndexingResponse stopIndexing() throws InterruptedException {
 
+        logger.info("Остановка индексации...");
         IndexingResponse response = new IndexingResponse();
 
         if (forkJoinPool.isShutdown()) {
             response.setResult(false);
             response.setError("Индексация не запущена");
+            logger.error("Индексация не запущена");
             return response;
         }
 
@@ -129,7 +137,7 @@ public class IndexingServiceImpl implements IndexingService {
                 siteService.save(site);
             }
         }
-
+        logger.info("Индексация остановлена пользователем!");
         response.setResult(true);
 
         return response;
@@ -138,6 +146,7 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public IndexingResponse indexPage(String url) {
 
+        logger.info("Индексация страницы запущена...");
         IndexingResponse response = new IndexingResponse();
         forkJoinPool = new ForkJoinPool();
 
@@ -201,13 +210,14 @@ public class IndexingServiceImpl implements IndexingService {
                     searchIndices.add(searchIndex);
                 }
                 searchIndexService.uploadSearchIndex(searchIndices);
-
+                logger.info("Индексация страницы завершена!");
                 response.setResult(true);
                 return response;
             }
         }
         response.setResult(false);
         response.setError("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
+        logger.info("Данная страница находится за пределами сайтов, указанных в конфигурационном файле!");
         return response;
     }
 

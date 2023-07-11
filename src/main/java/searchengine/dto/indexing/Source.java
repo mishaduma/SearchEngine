@@ -6,6 +6,8 @@ import org.jsoup.HttpStatusException;
 import org.jsoup.Jsoup;
 import org.jsoup.UnsupportedMimeTypeException;
 import org.jsoup.select.Elements;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import searchengine.model.Page;
 import searchengine.model.RankedLemma;
 import searchengine.model.Site;
@@ -21,6 +23,7 @@ public class Source {
     private Connection connection;
     private final List<RankedLemma> rankedLemmas;
     private Site site;
+    private Logger logger = LoggerFactory.getLogger(Source.class.getName());
 
     public Source(String url, List<RankedLemma> rankedLemmas, Site site) {
         this.url = url;
@@ -76,15 +79,15 @@ public class Source {
             }
 
         } catch (SocketTimeoutException socketTimeoutException) {
-            System.out.println(socketTimeoutException.getMessage() + " " + url);
+            logger.error(socketTimeoutException.getMessage() + " " + url);
         } catch (HttpStatusException httpStatusException) {
             page.setPath(url);
             page.setContent(httpStatusException.getMessage());
             page.setCode(httpStatusException.getStatusCode());
             page.setSiteId(site.getId());
-            System.out.println(httpStatusException.getMessage() + " " + url);
+            logger.error(httpStatusException.getMessage() + " " + url);
         } catch (UnsupportedMimeTypeException unsupportedMimeTypeException) {
-            System.out.println("Wrong MimeType: " + unsupportedMimeTypeException.getMimeType());
+            logger.error("Неправильный MimeType: " + unsupportedMimeTypeException.getMimeType());
         }
 
         for (String child : childNames) {
