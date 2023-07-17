@@ -54,7 +54,6 @@ public class Source {
                 page.setCode(connection.execute().statusCode());
                 page.setSiteId(site.getId());
 
-
                 synchronized (rankedLemmas) {
                     Map<String, Integer> newLemmas = new LemmasCounter().getLemmas(connection.get().toString()
                             .replaceAll("[^А-ЯЁа-яё\\s-]", " ")
@@ -79,15 +78,15 @@ public class Source {
             }
 
         } catch (SocketTimeoutException socketTimeoutException) {
-            logger.error(socketTimeoutException.getMessage() + " " + url);
+            logger.error("{} {}", socketTimeoutException.getMessage(), url);
         } catch (HttpStatusException httpStatusException) {
             page.setPath(url);
             page.setContent(httpStatusException.getMessage());
             page.setCode(httpStatusException.getStatusCode());
             page.setSiteId(site.getId());
-            logger.error(httpStatusException.getMessage() + " " + url);
+            logger.error("{} {}", httpStatusException.getMessage(), url);
         } catch (UnsupportedMimeTypeException unsupportedMimeTypeException) {
-            logger.error("Неправильный MimeType: " + unsupportedMimeTypeException.getMimeType());
+            logger.error("Неправильный MimeType: {}", unsupportedMimeTypeException.getMimeType());
         }
 
         for (String child : childNames) {

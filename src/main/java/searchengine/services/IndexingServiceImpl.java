@@ -41,6 +41,39 @@ public class IndexingServiceImpl implements IndexingService {
         logger.info("Индексация запущена...");
         IndexingResponse response = new IndexingResponse();
 
+        addSitesToDB();
+
+        CompletableFuture.supplyAsync(() -> {
+
+            List<Site> sites = siteService.downloadSites();
+            List<CompletableFuture<Void>> futureList = new ArrayList<>();
+            forkJoinPool = new ForkJoinPool();
+
+            getFutureList(sites, futureList);
+
+            futureList.forEach(CompletableFuture::join);
+
+            List<Lemma> lemmas = new ArrayList<>();
+            for (Site site : sites) {
+                getLemmasAndCountFrequency(site, lemmas);
+            }
+            logger.info("Добавление лемм в БД...");
+            lemmaService.uploadLemmas(lemmas);
+
+            List<SearchIndex> searchIndices = new ArrayList<>();
+            List<Lemma> lemmasFromDB = lemmaService.downloadLemmas();
+            List<Page> pagesFromDB = pageService.downloadPages();
+
+            getSearchIndices(sites, lemmasFromDB, pagesFromDB, searchIndices);
+
+            logger.info("Индексация завершена!");
+            return null;
+        });
+        response.setResult(true);
+        return response;
+    }
+
+    private void addSitesToDB() {
         for (ConfigSite s : sitesList.getSites()) {
             Site site = new Site();
             if (siteService.contains(s.getUrl())) {
@@ -53,64 +86,43 @@ public class IndexingServiceImpl implements IndexingService {
             site.setStatus(INDEXING);
             site.setLastError(null);
             siteService.save(site);
-            logger.info(site.getName() + " добавлен в БД");
+            logger.info("Сайт {} добавлен в БД", site.getName());
+        }
+    }
+
+    private void getFutureList(List<Site> sites, List<CompletableFuture<Void>> futureList) {
+        for (Site site : sites) {
+
+            futureList.add(CompletableFuture.supplyAsync(() -> {
+                pageService.uploadPages(forkJoinPool
+                        .invoke(new Tasker(new Source(site.getUrl(), rankedLemmas, site), pageService, siteService)));
+
+                site.setStatus(Status.INDEXED);
+                site.setStatusTime(LocalDateTime.now());
+                siteService.save(site);
+                return null;
+            }));
+        }
+    }
+
+    private void getSearchIndices(List<Site> sites, List<Lemma> lemmasFromDB, List<Page> pagesFromDB, List<SearchIndex> searchIndices) {
+        for (RankedLemma rankedLemma : rankedLemmas) {
+            SearchIndex searchIndex = new SearchIndex();
+            searchIndex.setLemmaId(lemmasFromDB.stream()
+                    .filter(lemma1 -> lemma1.getLemma().equals(rankedLemma.getLemma()))
+                    .filter(lemma1 -> lemma1.getSiteId() == sites.stream().filter(s ->
+                            rankedLemma.getUrl().startsWith(s.getUrl())).findFirst().get().getId())
+                    .findFirst().get().getId());
+            searchIndex.setPageId(pagesFromDB.stream()
+                    .filter(page -> page.getPath().equals(rankedLemma.getUrl()))
+                    .findFirst().get().getId());
+            searchIndex.setRank(rankedLemma.getRank());
+            searchIndices.add(searchIndex);
         }
 
-        //uploading pages
-        CompletableFuture.supplyAsync(() -> {
-
-            List<Site> sites = siteService.downloadSites();
-            List<CompletableFuture<Void>> futureList = new ArrayList<>();
-            forkJoinPool = new ForkJoinPool();
-
-            for (Site site : sites) {
-
-                futureList.add(CompletableFuture.supplyAsync(() -> {
-                    pageService.uploadPages(forkJoinPool
-                            .invoke(new Tasker(new Source(site.getUrl(), rankedLemmas, site), pageService, siteService)));
-
-                    site.setStatus(Status.INDEXED);
-                    site.setStatusTime(LocalDateTime.now());
-                    siteService.save(site);
-                    return null;
-                }));
-            }
-
-            futureList.forEach(CompletableFuture::join);
-
-            List<Lemma> lemmas = new ArrayList<>();
-            for (Site site : sites) {
-                createLemmas(site, lemmas);
-            }
-            logger.info("Добавление лемм в БД...");
-            lemmaService.uploadLemmas(lemmas);
-
-            List<SearchIndex> searchIndices = new ArrayList<>();
-            List<Lemma> lemmasFromDB = lemmaService.downloadLemmas();
-            List<Page> pagesFromDB = pageService.downloadPages();
-
-            for (RankedLemma rankedLemma : rankedLemmas) {
-                SearchIndex searchIndex = new SearchIndex();
-                searchIndex.setLemmaId(lemmasFromDB.stream()
-                        .filter(lemma1 -> lemma1.getLemma().equals(rankedLemma.getLemma()))
-                        .filter(lemma1 -> lemma1.getSiteId() == sites.stream().filter(s ->
-                                rankedLemma.getUrl().startsWith(s.getUrl())).findFirst().get().getId())
-                        .findFirst().get().getId());
-                searchIndex.setPageId(pagesFromDB.stream()
-                        .filter(page -> page.getPath().equals(rankedLemma.getUrl()))
-                        .findFirst().get().getId());
-                searchIndex.setRank(rankedLemma.getRank());
-                searchIndices.add(searchIndex);
-            }
-            logger.info("Добавление SearchIndices в БД...");
-            searchIndexService.uploadSearchIndex(searchIndices);
-            rankedLemmas.clear();
-
-            return null;
-        });
-        logger.info("Индексация завершена!");
-        response.setResult(true);
-        return response;
+        logger.info("Добавление SearchIndices в БД...");
+        searchIndexService.uploadSearchIndex(searchIndices);
+        rankedLemmas.clear();
     }
 
     @Override
@@ -146,7 +158,7 @@ public class IndexingServiceImpl implements IndexingService {
     @Override
     public IndexingResponse indexPage(String url) {
 
-        logger.info("Индексация страницы запущена...");
+        logger.info("Индексация страницы {} запущена...", url);
         IndexingResponse response = new IndexingResponse();
         forkJoinPool = new ForkJoinPool();
 
@@ -179,49 +191,20 @@ public class IndexingServiceImpl implements IndexingService {
                 }).join();
 
                 List<Lemma> lemmas = new ArrayList<>();
-                createLemmas(site, lemmas);
-                for (Lemma lemma : lemmas) {
-                    if (lemmaService.contains(lemma.getLemma())) {
-                        Optional<Lemma> optionalLemma = lemmaService.getByLemma(lemma.getLemma()).stream()
-                                .filter(lemma1 -> lemma1.getSiteId() == site.getId()).findFirst();
-                        if (optionalLemma.isPresent()) {
-                            lemma = optionalLemma.get();
-                            lemma.setFrequency(lemma.getFrequency() + 1);
-                        }
-                    }
-                    lemmaService.save(lemma);
-                }
-
-                List<Lemma> lemmasFromDB = new ArrayList<>();
-                for (Lemma lemma : lemmas) {
-                    lemmasFromDB.add(lemmaService.getByLemma(lemma.getLemma()).stream()
-                            .filter(lemma1 -> lemma1.getSiteId() == site.getId()).findFirst().get());
-                }
-
-                List<SearchIndex> searchIndices = new ArrayList<>();
-                int pageId = pageService.getByUrl(url).getId();
-                for (RankedLemma rankedLemma : rankedLemmas) {
-                    SearchIndex searchIndex = new SearchIndex();
-                    searchIndex.setLemmaId(lemmasFromDB.stream()
-                            .filter(lemma1 -> lemma1.getLemma().equals(rankedLemma.getLemma()))
-                            .findFirst().get().getId());
-                    searchIndex.setPageId(pageId);
-                    searchIndex.setRank(rankedLemma.getRank());
-                    searchIndices.add(searchIndex);
-                }
-                searchIndexService.uploadSearchIndex(searchIndices);
+                getLemmasAndCountFrequency(site, lemmas);
+                getSearchIndicesForPage(lemmas, site, url);
                 logger.info("Индексация страницы завершена!");
                 response.setResult(true);
                 return response;
             }
         }
         response.setResult(false);
-        response.setError("Данная страница находится за пределами сайтов, указанных в конфигурационном файле");
-        logger.info("Данная страница находится за пределами сайтов, указанных в конфигурационном файле!");
+        response.setError("Cтраница находится за пределами сайтов, указанных в конфигурационном файле");
+        logger.info("Cтраница {} находится за пределами сайтов, указанных в конфигурационном файле!", url);
         return response;
     }
 
-    private void createLemmas(Site site, List<Lemma> lemmas) {
+    private void getLemmasAndCountFrequency(Site site, List<Lemma> lemmas) {
 
         Map<String, Integer> lemmasMap = rankedLemmas.stream()
                 .filter(rl -> rl.getUrl().startsWith(site.getUrl()))
@@ -235,5 +218,37 @@ public class IndexingServiceImpl implements IndexingService {
             lemma.setSiteId(site.getId());
             lemmas.add(lemma);
         }
+
+        for (Lemma lemma : lemmas) {
+            if (lemmaService.contains(lemma.getLemma())) {
+                Optional<Lemma> optionalLemma = lemmaService.getByLemma(lemma.getLemma()).stream()
+                        .filter(lemma1 -> lemma1.getSiteId() == site.getId()).findFirst();
+                if (optionalLemma.isPresent()) {
+                    lemma = optionalLemma.get();
+                    lemma.setFrequency(lemma.getFrequency() + 1);
+                }
+            }
+            lemmaService.save(lemma);
+        }
+    }
+
+    private void getSearchIndicesForPage(List<Lemma> lemmas, Site site, String url) {
+        List<Lemma> lemmasFromDB = new ArrayList<>();
+        for (Lemma lemma : lemmas) {
+            lemmasFromDB.add(lemmaService.getByLemma(lemma.getLemma()).stream()
+                    .filter(lemma1 -> lemma1.getSiteId() == site.getId()).findFirst().get());
+        }
+        List<SearchIndex> searchIndices = new ArrayList<>();
+        int pageId = pageService.getByUrl(url).getId();
+        for (RankedLemma rankedLemma : rankedLemmas) {
+            SearchIndex searchIndex = new SearchIndex();
+            searchIndex.setLemmaId(lemmasFromDB.stream()
+                    .filter(lemma1 -> lemma1.getLemma().equals(rankedLemma.getLemma()))
+                    .findFirst().get().getId());
+            searchIndex.setPageId(pageId);
+            searchIndex.setRank(rankedLemma.getRank());
+            searchIndices.add(searchIndex);
+        }
+        searchIndexService.uploadSearchIndex(searchIndices);
     }
 }

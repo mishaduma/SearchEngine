@@ -30,6 +30,7 @@ public class SearchServiceImpl implements SearchService {
     public SearchResponse search(String query, String site, int offset, int limit) throws IOException {
 
         logger.info("Поиск запущен...");
+        SearchResponse searchResponse = new SearchResponse();
         Map<String, Integer> lemmasFromQuery = new LemmasCounter().getLemmas(query);
         List<Lemma> lemmasFromDB = new ArrayList<>();
         List<Lemma> sortedLemmas = new ArrayList<>();
@@ -53,24 +54,8 @@ public class SearchServiceImpl implements SearchService {
 
         sortedLemmas.remove(0);
 
-        for (Lemma sl : sortedLemmas) {
-            List<Page> tempList = new ArrayList<>();
-            for (Lemma lemma : lemmasFromDB) {
-                if (lemma.getLemma().equals(sl.getLemma())) {
-                    for (Page page : pages) {
-                        for (SearchIndex searchIndex : searchIndexService.getByLemmaId(lemma.getId())) {
-                            if (page.getId() == searchIndex.getPageId()) {
-                                tempList.add(page);
-                            }
-                        }
-                    }
-                }
-            }
-            pages.clear();
-            pages.addAll(tempList);
-        }
+        getTargetPages(sortedLemmas, lemmasFromDB, pages);
 
-        SearchResponse searchResponse = new SearchResponse();
         searchResponse.setResult(true);
         if (pages.size() == 0) {
             searchResponse.setCount(0);
@@ -79,19 +64,8 @@ public class SearchServiceImpl implements SearchService {
             return searchResponse;
         }
 
-        List<SearchIndex> searchIndices = new ArrayList<>();
-        for (Page page : pages) {
-            for (Lemma lemma : lemmasFromDB) {
-                for (SearchIndex searchIndex : searchIndexService.getByLemmaId(lemma.getId())) {
-                    if (searchIndex.getPageId() == page.getId()) {
-                        searchIndices.add(searchIndex);
-                    }
-                }
-            }
-        }
-
         searchResponse.setCount(Math.min(pages.size(), limit));
-        searchResponse.setData(getSearchDataList(pages, searchIndices, query).stream()
+        searchResponse.setData(getSearchDataList(pages, lemmasFromDB, query).stream()
                 .limit(limit).collect(Collectors.toList()));
         logger.info("Поиск завершён!");
         return searchResponse;
@@ -111,8 +85,38 @@ public class SearchServiceImpl implements SearchService {
         sortedLemmas.sort(Comparator.comparing(Lemma::getFrequency));
     }
 
-    private List<SearchData> getSearchDataList(List<Page> pages, List<SearchIndex> searchIndices, String query) {
+    private void getTargetPages(List<Lemma> sortedLemmas, List<Lemma> lemmasFromDB, List<Page> pages) {
+        for (Lemma sl : sortedLemmas) {
+            List<Page> tempList = new ArrayList<>();
+            for (Lemma lemma : lemmasFromDB) {
+                if (lemma.getLemma().equals(sl.getLemma())) {
+                    for (Page page : pages) {
+                        for (SearchIndex searchIndex : searchIndexService.getByLemmaId(lemma.getId())) {
+                            if (page.getId() == searchIndex.getPageId()) {
+                                tempList.add(page);
+                            }
+                        }
+                    }
+                }
+            }
+            pages.clear();
+            pages.addAll(tempList);
+        }
+    }
+
+    private List<SearchData> getSearchDataList(List<Page> pages, List<Lemma> lemmasFromDB, String query) {
         List<SearchData> searchDataList = new ArrayList<>();
+
+        List<SearchIndex> searchIndices = new ArrayList<>();
+        for (Page page : pages) {
+            for (Lemma lemma : lemmasFromDB) {
+                for (SearchIndex searchIndex : searchIndexService.getByLemmaId(lemma.getId())) {
+                    if (searchIndex.getPageId() == page.getId()) {
+                        searchIndices.add(searchIndex);
+                    }
+                }
+            }
+        }
 
         double maxRel = searchIndices.stream()
                 .collect(Collectors.groupingBy(SearchIndex::getPageId, Collectors.summingDouble(SearchIndex::getRank)))
